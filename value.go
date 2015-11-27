@@ -3,6 +3,7 @@ package phpobject
 import (
 	"fmt"
 	"io"
+	"regexp"
 )
 
 type PValueType int
@@ -112,9 +113,13 @@ func (dt PDouble) serialize(w io.Writer) {
 
 type PString string
 
-func (st PString) String() string        { return string(st) }
-func (st PString) Type() PValueType      { return PTString }
-func (dt PDouble) serialize(w io.Writer) {}
+func (st PString) String() string   { return string(st) }
+func (st PString) Type() PValueType { return PTString }
+func (st PString) serialize(w io.Writer) {
+	fmt.Fprintf(w, "s:%d:\"", len(st))
+	fmt.Fprint(w, st)
+	fmt.Fprint(w, "\";")
+}
 
 const (
 	NumArray = 1
@@ -122,10 +127,64 @@ const (
 )
 
 type PArray struct {
-	array     map[PString]PValue
-	forceType int
+	array map[string]PValue
+	//forceType int
 }
 
-func (tb *PArray) String() string        { return fmt.Sprintf("table: %p", tb) }
-func (tb *PArray) Type() PValueType      { return PTArray }
-func (dt PDouble) serialize(w io.Writer) {}
+func NewArray() *PArray {
+	var at PArray
+	at.array = make(map[string]PValue)
+	return &at
+}
+
+func (tb *PArray) Iget(index int) (PValue, bool) {
+	key := fmt.Sprintf("%d", index)
+	v, o := tb.array[key]
+	return v, o
+}
+func (tb *PArray) Rget(key string) (PValue, bool) {
+	v, o := tb.array[key]
+	return v, o
+}
+func (tb *PArray) Pget(key string) (PValue, bool) {
+	v, o := tb.array[key]
+	return v, o
+}
+
+func (tb *PArray) Iset(index int, value PValue) {
+	key := fmt.Sprintf("%d", index)
+	tb.array[key] = value
+}
+func (tb *PArray) Rset(key string, value PValue) {
+	tb.array[key] = value
+}
+func (tb *PArray) Pset(key string, value PValue) string {
+	tb.array[key] = value
+	return key
+}
+
+var patNumber, _ = regexp.Compile(`^-?[1-9][0-9]*$`)
+
+func serializeKey(w io.Writer, key string) {
+	if key == "0" || patNumber.MatchString(key) {
+		fmt.Fprintf(w, "i:%s;", key)
+	} else {
+		fmt.Fprintf(w, "s:%d:\"", len(key))
+		fmt.Fprint(w, key)
+		fmt.Fprint(w, "\";")
+	}
+}
+
+func (tb *PArray) String() string   { return fmt.Sprintf("table: %p", tb) }
+func (tb *PArray) Type() PValueType { return PTArray }
+func (tb *PArray) serialize(w io.Writer) {
+	fmt.Fprintf(w, "a:%d:{", len(tb.array))
+	for k, v := range tb.array {
+		serializeKey(w, k)
+		v.serialize(w)
+	}
+	w.Write([]byte("}"))
+}
+func (tb *PArray) Output(w io.Writer) {
+	tb.serialize(w)
+}
