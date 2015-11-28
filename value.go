@@ -175,7 +175,7 @@ func serializeKey(w io.Writer, key string) {
 	}
 }
 
-func (tb *PArray) String() string   { return fmt.Sprintf("table: %p", tb) }
+func (tb *PArray) String() string   { return fmt.Sprintf("table: %v", tb) }
 func (tb *PArray) Type() PValueType { return PTArray }
 func (tb *PArray) serialize(w io.Writer) {
 	fmt.Fprintf(w, "a:%d:{", len(tb.array))
@@ -187,4 +187,32 @@ func (tb *PArray) serialize(w io.Writer) {
 }
 func (tb *PArray) Output(w io.Writer) {
 	tb.serialize(w)
+}
+
+type PObject struct {
+	array map[string]PValue
+	class string
+	//forceType int
+}
+
+func NewObject(class string) *PObject {
+	var ot PObject
+	ot.array = make(map[string]PValue)
+	ot.class = class
+	return &ot
+}
+
+var patVarName, _ = regexp.Compile(`^[[:alpha:]_]\w*$`)
+
+func (ot *PObject) String() string   { return fmt.Sprintf("object: %v", ot) }
+func (ot *PObject) Type() PValueType { return PTObject }
+func (ot *PObject) serialize(w io.Writer) {
+	fmt.Fprintf(w, "O:%d:\"%s\"", len(st), ot.class)
+	fmt.Fprintf(w, ":%d:{", len(tb.array))
+	for k, v := range tb.array {
+		kk := PString(k)
+		kk.serialize(kk)
+		v.serialize(w)
+	}
+	w.Write([]byte("}"))
 }
