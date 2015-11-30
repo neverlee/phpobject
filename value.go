@@ -35,9 +35,11 @@ type PValue interface {
 
 type PNilType struct{}
 
-func (nl *PNilType) String() string        { return "nil" }
-func (nl *PNilType) Type() PValueType      { return PTNil }
-func (nl *PNilType) serialize(w io.Writer) {}
+func (nl *PNilType) String() string   { return "nil" }
+func (nl *PNilType) Type() PValueType { return PTNil }
+func (nl *PNilType) serialize(w io.Writer) {
+	w.Write([]byte("N;"))
+}
 
 var PNil = PValue(&PNilType{})
 
@@ -240,37 +242,33 @@ func (ot *PObject) SetBaseVar(claname, varname string, value PValue) error {
 	ot.vars[string] = oValue{value, BasePrivateVar}
 }
 
-func (ot *PObject) GetVar(varname string) (value PValue, vtype int) {
-	if vtype == BasePrivateVar {
-		return errors.New("You should use SetBaseVar")
-	}
-	if vtype > BasePrivateVar || vtype < 0 {
-		return errors.New("Error var type")
-	}
-	if !patVarName.MatchString(varname) {
-		return errors.New("Error varname")
-	}
-	ot.vars[string] = oValue{value, vtype}
+func (ot *PObject) GetVar(varname string) (value PValue, vtype int, ok bool) {
+	oval, ok := ot.vars[varname]
+	return oval.value, varType, ok
 }
 
-func (ot *PObject) GetBaseVar(claname, varname string) (value PValue) {
-	if !patVarName.MatchString(varname) {
-		return errors.New("Error varname")
-	}
-	if !patVarName.MatchString(clsname) {
-		return errors.New("Error class name")
-	}
-	ot.vars[string] = oValue{value, BasePrivateVar}
+func (ot *PObject) GetBaseVar(clsname, varname string) (value PValue, ok bool) {
+	key := fmt.Sprintf("\x00%s\x00%s", clsname, varname)
+	oval, ok := ot.vars[varname]
+	return oval.value, ok
 }
 
 func (ot *PObject) String() string   { return fmt.Sprintf("object: %v", ot) }
 func (ot *PObject) Type() PValueType { return PTObject }
 func (ot *PObject) serialize(w io.Writer) {
 	fmt.Fprintf(w, "O:%d:\"%s\"", len(st), ot.class)
-	fmt.Fprintf(w, ":%d:{", len(tb.array))
-	for k, v := range tb.array {
-		kk := PString(k)
-		kk.serialize(kk)
+	fmt.Fprintf(w, ":%d:{", len(tb.vars))
+	for k, v := range tb.vars {
+		key = PString(k)
+		switch v.varType {
+		case ProtectedVar:
+			key = PString("\x00*\x00" + k)
+		case PrivateVar:
+			key = PString(fmt.Sprintf("\x00%s\x00%s", ot.class, k))
+			//case PublicVar, BasePrivateVar:
+			//	key = k
+		}
+		key.serialize(w)
 		v.serialize(w)
 	}
 	w.Write([]byte("}"))
