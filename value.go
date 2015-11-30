@@ -189,20 +189,79 @@ func (tb *PArray) Output(w io.Writer) {
 	tb.serialize(w)
 }
 
+const (
+	PublicVar      = 0
+	ProtectedVar   = 1
+	PrivateVar     = 2
+	BasePrivateVar = 4
+	endVarType     = 5
+)
+
+type oValue struct {
+	value   PValue
+	varType int
+}
+
 type PObject struct {
-	array map[string]PValue
+	vars  map[string]oValue
 	class string
 	//forceType int
 }
 
 func NewObject(class string) *PObject {
 	var ot PObject
-	ot.array = make(map[string]PValue)
+	ot.vars = make(map[string]oValue)
 	ot.class = class
 	return &ot
 }
 
 var patVarName, _ = regexp.Compile(`^[[:alpha:]_]\w*$`)
+
+func (ot *PObject) SetVar(varname string, vtype int, value PValue) error {
+	if vtype == BasePrivateVar {
+		return errors.New("You should use SetBaseVar")
+	}
+	if vtype > BasePrivateVar || vtype < 0 {
+		return errors.New("Error var type")
+	}
+	if !patVarName.MatchString(varname) {
+		return errors.New("Error varname")
+	}
+	ot.vars[string] = oValue{value, vtype}
+}
+
+func (ot *PObject) SetBaseVar(claname, varname string, value PValue) error {
+	if !patVarName.MatchString(varname) {
+		return errors.New("Error varname")
+	}
+	if !patVarName.MatchString(clsname) {
+		return errors.New("Error class name")
+	}
+	ot.vars[string] = oValue{value, BasePrivateVar}
+}
+
+func (ot *PObject) GetVar(varname string) (value PValue, vtype int) {
+	if vtype == BasePrivateVar {
+		return errors.New("You should use SetBaseVar")
+	}
+	if vtype > BasePrivateVar || vtype < 0 {
+		return errors.New("Error var type")
+	}
+	if !patVarName.MatchString(varname) {
+		return errors.New("Error varname")
+	}
+	ot.vars[string] = oValue{value, vtype}
+}
+
+func (ot *PObject) GetBaseVar(claname, varname string) (value PValue) {
+	if !patVarName.MatchString(varname) {
+		return errors.New("Error varname")
+	}
+	if !patVarName.MatchString(clsname) {
+		return errors.New("Error class name")
+	}
+	ot.vars[string] = oValue{value, BasePrivateVar}
+}
 
 func (ot *PObject) String() string   { return fmt.Sprintf("object: %v", ot) }
 func (ot *PObject) Type() PValueType { return PTObject }
