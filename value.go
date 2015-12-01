@@ -67,7 +67,7 @@ var PFalse = PBool(false)
 
 type PLong int
 
-func (lt PLong) String() string   { return fmt.Sprint(lt) }
+func (lt PLong) String() string   { return fmt.Sprint(int(lt)) }
 func (lt PLong) Type() PValueType { return PTLong }
 func (lt PLong) serialize(w io.Writer) {
 	fmt.Fprintf(w, "i:%d;", lt)
@@ -75,7 +75,7 @@ func (lt PLong) serialize(w io.Writer) {
 
 type PDouble float64
 
-func (dt PDouble) String() string   { return fmt.Sprint(dt) }
+func (dt PDouble) String() string   { return fmt.Sprint(float64(dt)) }
 func (dt PDouble) Type() PValueType { return PTDouble }
 func (dt PDouble) serialize(w io.Writer) {
 	fmt.Fprintf(w, "d:%f;", dt)
