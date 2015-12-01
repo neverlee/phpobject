@@ -24,6 +24,26 @@ const (
 
 var pValueNames = [9]string{"nil", "boolean", "long", "double", "string", "array", "object"}
 
+func defaultFormat(v interface{}, f fmt.State, c rune) {
+	buf := make([]string, 0, 10)
+	buf = append(buf, "%")
+	for i := 0; i < 128; i++ {
+		if f.Flag(i) {
+			buf = append(buf, string(i))
+		}
+	}
+
+	if w, ok := f.Width(); ok {
+		buf = append(buf, strconv.Itoa(w))
+	}
+	if p, ok := f.Precision(); ok {
+		buf = append(buf, "."+strconv.Itoa(p))
+	}
+	buf = append(buf, string(c))
+	format := strings.Join(buf, "")
+	fmt.Fprintf(f, format, v)
+}
+
 func (vt PValueType) String() string {
 	return pValueNames[int(vt)]
 }
@@ -142,6 +162,27 @@ func serializeKey(w io.Writer, key string) {
 
 func (tb *PArray) String() string   { return fmt.Sprintf("table: %v", tb) }
 func (tb *PArray) Type() PValueType { return PTArray }
+
+// fmt.Formatter interface
+func (tb *PArray) Format(f fmt.State, c rune) {
+	switch c {
+	case 'q', 's':
+		defaultFormat(nm.String(), f, c)
+	case 'b', 'c', 'd', 'o', 'x', 'X', 'U':
+		defaultFormat(int64(nm), f, c)
+	case 'e', 'E', 'f', 'F', 'g', 'G':
+		defaultFormat(float64(nm), f, c)
+	case 'i':
+		defaultFormat(int64(nm), f, 'd')
+	default:
+		if isInteger(nm) {
+			defaultFormat(int64(nm), f, c)
+		} else {
+			defaultFormat(float64(nm), f, c)
+		}
+	}
+}
+
 func (tb *PArray) serialize(w io.Writer) {
 	fmt.Fprintf(w, "a:%d:{", len(tb.array))
 	for k, v := range tb.array {
@@ -149,9 +190,6 @@ func (tb *PArray) serialize(w io.Writer) {
 		v.serialize(w)
 	}
 	w.Write([]byte("}"))
-}
-func (tb *PArray) Output(w io.Writer) {
-	tb.serialize(w)
 }
 
 const (
