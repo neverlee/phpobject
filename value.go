@@ -6,10 +6,11 @@ import (
 	"regexp"
 )
 
+var patNumber, _ = regexp.Compile(`^-?[1-9][0-9]*$`)
+var patVarName, _ = regexp.Compile(`^[[:alpha:]_]\w*$`)
+
 type PValueType int
 
-//r    zval *   资源（文件指针，数据库连接等）
-//z    zval *   无任何操作的zval
 const (
 	PTNil PValueType = iota
 	PTBool
@@ -59,40 +60,6 @@ func (bl PBool) serialize(w io.Writer) {
 		w.Write([]byte("b:0;"))
 	}
 }
-
-//if isinstance(obj, basestring):
-//    encoded_obj = obj
-//    if isinstance(obj, unicode):
-//        encoded_obj = obj.encode(charset, errors)
-//    s = BytesIO()
-//    s.write(b's:')
-//    s.write(str(len(encoded_obj)).encode('latin1'))
-//    s.write(b':"')
-//    s.write(encoded_obj)
-//    s.write(b'";')
-//    return s.getvalue()
-//if isinstance(obj, (list, tuple, dict)):
-//    out = []
-//    if isinstance(obj, dict):
-//        iterable = obj.items()
-//    else:
-//        iterable = enumerate(obj)
-//    for key, value in iterable:
-//        out.append(_serialize(key, True))
-//        out.append(_serialize(value, False))
-//    return b''.join([
-//        b'a:',
-//        str(len(obj)).encode('latin1'),
-//        b':{',
-//        b''.join(out),
-//        b'}'
-//    ])
-//if isinstance(obj, phpobject):
-//    return b'O' + _serialize(obj.__name__, True)[1:-1] + \
-//           _serialize(obj.__php_vars__, False)[1:]
-//if object_hook is not None:
-//    return _serialize(object_hook(obj), False)
-//raise TypeError('can\'t serialize %r' % type(obj))
 
 var PTrue = PBool(true)
 var PFalse = PBool(false)
@@ -144,11 +111,7 @@ func (tb *PArray) Iget(index int) (PValue, bool) {
 	v, o := tb.array[key]
 	return v, o
 }
-func (tb *PArray) Rget(key string) (PValue, bool) {
-	v, o := tb.array[key]
-	return v, o
-}
-func (tb *PArray) Pget(key string) (PValue, bool) {
+func (tb *PArray) Get(key string) (PValue, bool) {
 	v, o := tb.array[key]
 	return v, o
 }
@@ -157,15 +120,14 @@ func (tb *PArray) Iset(index int, value PValue) {
 	key := fmt.Sprintf("%d", index)
 	tb.array[key] = value
 }
-func (tb *PArray) Rset(key string, value PValue) {
+func (tb *PArray) Set(key string, value PValue) bool {
 	tb.array[key] = value
+	if key == "0" || patNumber.MatchString(key) {
+		return true
+	} else {
+		return false
+	}
 }
-func (tb *PArray) Pset(key string, value PValue) string {
-	tb.array[key] = value
-	return key
-}
-
-var patNumber, _ = regexp.Compile(`^-?[1-9][0-9]*$`)
 
 func serializeKey(w io.Writer, key string) {
 	if key == "0" || patNumber.MatchString(key) {
@@ -216,8 +178,6 @@ func NewObject(class string) *PObject {
 	ot.class = class
 	return &ot
 }
-
-var patVarName, _ = regexp.Compile(`^[[:alpha:]_]\w*$`)
 
 func (ot *PObject) SetVar(varname string, vtype int, value PValue) error {
 	if vtype == BasePrivateVar {
