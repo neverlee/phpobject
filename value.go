@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
+	"strings"
 )
 
 var patNumber, _ = regexp.Compile(`^-?[1-9][0-9]*$`)
@@ -23,26 +25,6 @@ const (
 )
 
 var pValueNames = [9]string{"nil", "boolean", "long", "double", "string", "array", "object"}
-
-func defaultFormat(v interface{}, f fmt.State, c rune) {
-	buf := make([]string, 0, 10)
-	buf = append(buf, "%")
-	for i := 0; i < 128; i++ {
-		if f.Flag(i) {
-			buf = append(buf, string(i))
-		}
-	}
-
-	if w, ok := f.Width(); ok {
-		buf = append(buf, strconv.Itoa(w))
-	}
-	if p, ok := f.Precision(); ok {
-		buf = append(buf, "."+strconv.Itoa(p))
-	}
-	buf = append(buf, string(c))
-	format := strings.Join(buf, "")
-	fmt.Fprintf(f, format, v)
-}
 
 func (vt PValueType) String() string {
 	return pValueNames[int(vt)]
@@ -160,28 +142,18 @@ func serializeKey(w io.Writer, key string) {
 	}
 }
 
-func (tb *PArray) String() string   { return fmt.Sprintf("table: %v", tb) }
-func (tb *PArray) Type() PValueType { return PTArray }
-
-// fmt.Formatter interface
-func (tb *PArray) Format(f fmt.State, c rune) {
-	switch c {
-	case 'q', 's':
-		defaultFormat(nm.String(), f, c)
-	case 'b', 'c', 'd', 'o', 'x', 'X', 'U':
-		defaultFormat(int64(nm), f, c)
-	case 'e', 'E', 'f', 'F', 'g', 'G':
-		defaultFormat(float64(nm), f, c)
-	case 'i':
-		defaultFormat(int64(nm), f, 'd')
-	default:
-		if isInteger(nm) {
-			defaultFormat(int64(nm), f, c)
-		} else {
-			defaultFormat(float64(nm), f, c)
-		}
+func (tb *PArray) String() string {
+	slist := make([]string, len(tb.array)+2)
+	slist[0] = fmt.Sprintf("Array(%d) [", len(tb.array))
+	i := 1
+	for k, v := range tb.array {
+		slist[i] = fmt.Sprintf("%s : %s,", k, v.String())
+		i++
 	}
+	slist[i] = "]"
+	return strings.Join(slist, " ")
 }
+func (tb *PArray) Type() PValueType { return PTArray }
 
 func (tb *PArray) serialize(w io.Writer) {
 	fmt.Fprintf(w, "a:%d:{", len(tb.array))
@@ -266,8 +238,29 @@ func (ot *PObject) GetBaseVar(clsname, varname string) (value PValue, ok bool) {
 	return oval.value, ok
 }
 
-func (ot *PObject) String() string   { return fmt.Sprintf("object: %v", ot) }
+func (ot *PObject) String() string {
+	slist := make([]string, len(ot.vars)+2)
+	slist[0] = fmt.Sprintf("Object(%s:%d) {", ot.class, len(ot.vars))
+	i := 1
+	for k, v := range ot.vars {
+		switch v.varType {
+		case PublicVar:
+			slist[i] = fmt.Sprintf("%s : %s,", k, v.value.String())
+		case ProtectedVar:
+			slist[i] = fmt.Sprintf("-%s : %s,", k, v.value.String())
+		case PrivateVar:
+			slist[i] = fmt.Sprintf("*%s : %s,", k, v.value.String())
+		case BasePrivateVar:
+			kk := strings.Replace(k, "\x00", "*", 2)
+			slist[i] = fmt.Sprintf("%s : %s,", kk[1:], v.value.String())
+		}
+		i++
+	}
+	slist[i] = "}"
+	return strings.Join(slist, " ")
+}
 func (ot *PObject) Type() PValueType { return PTObject }
+
 func (ot *PObject) serialize(w io.Writer) {
 	fmt.Fprintf(w, "O:%d:\"%s\"", len(ot.class), ot.class)
 	fmt.Fprintf(w, ":%d:{", len(ot.vars))
