@@ -1,6 +1,7 @@
 package phpobject
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -169,7 +170,6 @@ type oValue struct {
 type PObject struct {
 	vars  map[string]oValue
 	class string
-	//forceType int
 }
 
 func NewObject(class string) *PObject {
@@ -189,37 +189,52 @@ func (ot *PObject) SetVar(varname string, vtype int, value PValue) error {
 	if !patVarName.MatchString(varname) {
 		return errors.New("Error varname")
 	}
-	ot.vars[string] = oValue{value, vtype}
+	ot.vars[varname] = oValue{value, vtype}
+	return nil
 }
 
-func (ot *PObject) SetBaseVar(claname, varname string, value PValue) error {
+func (ot *PObject) SetPublicVar(varname string, value PValue) error {
+	return ot.SetVar(varname, PublicVar, value)
+}
+
+func (ot *PObject) SetProtectedVar(varname string, value PValue) error {
+	return ot.SetVar(varname, ProtectedVar, value)
+}
+
+func (ot *PObject) SetPrivateVar(varname string, value PValue) error {
+	return ot.SetVar(varname, PrivateVar, value)
+}
+
+func (ot *PObject) SetBaseVar(clsname, varname string, value PValue) error {
 	if !patVarName.MatchString(varname) {
 		return errors.New("Error varname")
 	}
 	if !patVarName.MatchString(clsname) {
 		return errors.New("Error class name")
 	}
-	ot.vars[string] = oValue{value, BasePrivateVar}
+	key := fmt.Sprintf("\x00%s\x00%s", clsname, varname)
+	ot.vars[key] = oValue{value, BasePrivateVar}
+	return nil
 }
 
 func (ot *PObject) GetVar(varname string) (value PValue, vtype int, ok bool) {
 	oval, ok := ot.vars[varname]
-	return oval.value, varType, ok
+	return oval.value, oval.varType, ok
 }
 
 func (ot *PObject) GetBaseVar(clsname, varname string) (value PValue, ok bool) {
 	key := fmt.Sprintf("\x00%s\x00%s", clsname, varname)
-	oval, ok := ot.vars[varname]
+	oval, ok := ot.vars[key]
 	return oval.value, ok
 }
 
 func (ot *PObject) String() string   { return fmt.Sprintf("object: %v", ot) }
 func (ot *PObject) Type() PValueType { return PTObject }
 func (ot *PObject) serialize(w io.Writer) {
-	fmt.Fprintf(w, "O:%d:\"%s\"", len(st), ot.class)
-	fmt.Fprintf(w, ":%d:{", len(tb.vars))
-	for k, v := range tb.vars {
-		key = PString(k)
+	fmt.Fprintf(w, "O:%d:\"%s\"", len(ot.class), ot.class)
+	fmt.Fprintf(w, ":%d:{", len(ot.vars))
+	for k, v := range ot.vars {
+		key := PString(k)
 		switch v.varType {
 		case ProtectedVar:
 			key = PString("\x00*\x00" + k)
@@ -229,7 +244,7 @@ func (ot *PObject) serialize(w io.Writer) {
 			//	key = k
 		}
 		key.serialize(w)
-		v.serialize(w)
+		v.value.serialize(w)
 	}
 	w.Write([]byte("}"))
 }
