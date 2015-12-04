@@ -1,11 +1,11 @@
 package phpobject
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -34,13 +34,16 @@ type PValue interface {
 	String() string
 	Type() PValueType
 	serialize(w io.Writer)
-	//unserialize(r io.Reader)
+	Marshal() []byte
+	//Unmarshal(bcode []byte) error
+	//unserialize(r io.Reader) error
 }
 
 type PNilType struct{}
 
 func (nl *PNilType) String() string   { return "nil" }
 func (nl *PNilType) Type() PValueType { return PTNil }
+func (nl *PNilType) Marshal() []byte  { return []byte("N;") }
 func (nl *PNilType) serialize(w io.Writer) {
 	w.Write([]byte("N;"))
 }
@@ -56,12 +59,15 @@ func (bl PBool) String() string {
 	return "false"
 }
 func (bl PBool) Type() PValueType { return PTBool }
-func (bl PBool) serialize(w io.Writer) {
+func (bl PBool) Marshal() []byte {
 	if bl {
-		w.Write([]byte("b:1;"))
+		return []byte("b:1;")
 	} else {
-		w.Write([]byte("b:0;"))
+		return []byte("b:0;")
 	}
+}
+func (bl PBool) serialize(w io.Writer) {
+	w.Write(bl.Marshal())
 }
 
 var PTrue = PBool(true)
@@ -71,6 +77,9 @@ type PLong int
 
 func (lt PLong) String() string   { return fmt.Sprint(int(lt)) }
 func (lt PLong) Type() PValueType { return PTLong }
+func (lt PLong) Marshal() []byte {
+	return []byte(fmt.Sprintf("i:%d;", lt))
+}
 func (lt PLong) serialize(w io.Writer) {
 	fmt.Fprintf(w, "i:%d;", lt)
 }
@@ -79,6 +88,9 @@ type PDouble float64
 
 func (dt PDouble) String() string   { return fmt.Sprint(float64(dt)) }
 func (dt PDouble) Type() PValueType { return PTDouble }
+func (dt PDouble) Marshal() []byte {
+	return []byte(fmt.Sprintf("d:%f;", dt))
+}
 func (dt PDouble) serialize(w io.Writer) {
 	fmt.Fprintf(w, "d:%f;", dt)
 }
@@ -87,6 +99,9 @@ type PString string
 
 func (st PString) String() string   { return string(st) }
 func (st PString) Type() PValueType { return PTString }
+func (st PString) Marshal() []byte {
+	return []byte(fmt.Sprintf("s:%d:\"%s\";", len(st), st))
+}
 func (st PString) serialize(w io.Writer) {
 	fmt.Fprintf(w, "s:%d:\"", len(st))
 	fmt.Fprint(w, st)
@@ -154,7 +169,11 @@ func (tb *PArray) String() string {
 	return strings.Join(slist, " ")
 }
 func (tb *PArray) Type() PValueType { return PTArray }
-
+func (tb *PArray) Marshal() []byte {
+	buf := bytes.NewBuffer(nil)
+	tb.serialize(buf)
+	return buf.Bytes()
+}
 func (tb *PArray) serialize(w io.Writer) {
 	fmt.Fprintf(w, "a:%d:{", len(tb.array))
 	for k, v := range tb.array {
@@ -260,6 +279,11 @@ func (ot *PObject) String() string {
 	return strings.Join(slist, " ")
 }
 func (ot *PObject) Type() PValueType { return PTObject }
+func (ot *PObject) Marshal() []byte {
+	buf := bytes.NewBuffer(nil)
+	ot.serialize(buf)
+	return buf.Bytes()
+}
 
 func (ot *PObject) serialize(w io.Writer) {
 	fmt.Fprintf(w, "O:%d:\"%s\"", len(ot.class), ot.class)
