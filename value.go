@@ -33,18 +33,16 @@ func (vt PValueType) String() string {
 type PValue interface {
 	String() string
 	Type() PValueType
-	serialize(w io.Writer)
-	Marshal() []byte
-	//Unmarshal(bcode []byte) error
-	//unserialize(r io.Reader) error
+	Serialize(w io.Writer)
+	ToBytes() []byte
 }
 
 type PNilType struct{}
 
 func (nl *PNilType) String() string   { return "nil" }
 func (nl *PNilType) Type() PValueType { return PTNil }
-func (nl *PNilType) Marshal() []byte  { return []byte("N;") }
-func (nl *PNilType) serialize(w io.Writer) {
+func (nl *PNilType) ToBytes() []byte  { return []byte("N;") }
+func (nl *PNilType) Serialize(w io.Writer) {
 	w.Write([]byte("N;"))
 }
 
@@ -59,15 +57,15 @@ func (bl PBool) String() string {
 	return "false"
 }
 func (bl PBool) Type() PValueType { return PTBool }
-func (bl PBool) Marshal() []byte {
+func (bl PBool) ToBytes() []byte {
 	if bl {
 		return []byte("b:1;")
 	} else {
 		return []byte("b:0;")
 	}
 }
-func (bl PBool) serialize(w io.Writer) {
-	w.Write(bl.Marshal())
+func (bl PBool) Serialize(w io.Writer) {
+	w.Write(bl.ToBytes())
 }
 
 var PTrue = PBool(true)
@@ -77,10 +75,10 @@ type PLong int
 
 func (lt PLong) String() string   { return fmt.Sprint(int(lt)) }
 func (lt PLong) Type() PValueType { return PTLong }
-func (lt PLong) Marshal() []byte {
+func (lt PLong) ToBytes() []byte {
 	return []byte(fmt.Sprintf("i:%d;", lt))
 }
-func (lt PLong) serialize(w io.Writer) {
+func (lt PLong) Serialize(w io.Writer) {
 	fmt.Fprintf(w, "i:%d;", lt)
 }
 
@@ -88,10 +86,10 @@ type PDouble float64
 
 func (dt PDouble) String() string   { return fmt.Sprint(float64(dt)) }
 func (dt PDouble) Type() PValueType { return PTDouble }
-func (dt PDouble) Marshal() []byte {
+func (dt PDouble) ToBytes() []byte {
 	return []byte(fmt.Sprintf("d:%f;", dt))
 }
-func (dt PDouble) serialize(w io.Writer) {
+func (dt PDouble) Serialize(w io.Writer) {
 	fmt.Fprintf(w, "d:%f;", dt)
 }
 
@@ -99,10 +97,10 @@ type PString string
 
 func (st PString) String() string   { return string(st) }
 func (st PString) Type() PValueType { return PTString }
-func (st PString) Marshal() []byte {
+func (st PString) ToBytes() []byte {
 	return []byte(fmt.Sprintf("s:%d:\"%s\";", len(st), st))
 }
-func (st PString) serialize(w io.Writer) {
+func (st PString) Serialize(w io.Writer) {
 	fmt.Fprintf(w, "s:%d:\"", len(st))
 	fmt.Fprint(w, st)
 	fmt.Fprint(w, "\";")
@@ -147,7 +145,7 @@ func (tb *PArray) Set(key string, value PValue) bool {
 	}
 }
 
-func serializeKey(w io.Writer, key string) {
+func SerializeKey(w io.Writer, key string) {
 	if key == "0" || patNumber.MatchString(key) {
 		fmt.Fprintf(w, "i:%s;", key)
 	} else {
@@ -169,16 +167,16 @@ func (tb *PArray) String() string {
 	return strings.Join(slist, " ")
 }
 func (tb *PArray) Type() PValueType { return PTArray }
-func (tb *PArray) Marshal() []byte {
+func (tb *PArray) ToBytes() []byte {
 	buf := bytes.NewBuffer(nil)
-	tb.serialize(buf)
+	tb.Serialize(buf)
 	return buf.Bytes()
 }
-func (tb *PArray) serialize(w io.Writer) {
+func (tb *PArray) Serialize(w io.Writer) {
 	fmt.Fprintf(w, "a:%d:{", len(tb.array))
 	for k, v := range tb.array {
-		serializeKey(w, k)
-		v.serialize(w)
+		SerializeKey(w, k)
+		v.Serialize(w)
 	}
 	w.Write([]byte("}"))
 }
@@ -279,13 +277,13 @@ func (ot *PObject) String() string {
 	return strings.Join(slist, " ")
 }
 func (ot *PObject) Type() PValueType { return PTObject }
-func (ot *PObject) Marshal() []byte {
+func (ot *PObject) ToBytes() []byte {
 	buf := bytes.NewBuffer(nil)
-	ot.serialize(buf)
+	ot.Serialize(buf)
 	return buf.Bytes()
 }
 
-func (ot *PObject) serialize(w io.Writer) {
+func (ot *PObject) Serialize(w io.Writer) {
 	fmt.Fprintf(w, "O:%d:\"%s\"", len(ot.class), ot.class)
 	fmt.Fprintf(w, ":%d:{", len(ot.vars))
 	for k, v := range ot.vars {
@@ -298,8 +296,8 @@ func (ot *PObject) serialize(w io.Writer) {
 			//case PublicVar, BasePrivateVar:
 			//	key = k
 		}
-		key.serialize(w)
-		v.value.serialize(w)
+		key.Serialize(w)
+		v.value.Serialize(w)
 	}
 	w.Write([]byte("}"))
 }
