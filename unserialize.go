@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -44,8 +45,8 @@ func unserializeString(r io.Reader) (ret PString, err error) {
 	var l int
 	if ln, lerr := fmt.Fscanf(r, ":%d:\"", &l); lerr == nil && ln == 1 {
 		buf := make([]byte, l+2)
-		if _, berr := io.ReadFull(r, buf); berr == nil && buf[l-1] == '"' && buf[l] == ';' {
-			return PString(buf[:l-1]), nil
+		if _, berr := io.ReadFull(r, buf); berr == nil && buf[l] == '"' && buf[l+1] == ';' {
+			return PString(buf[:l]), nil
 		}
 	}
 	return "", errors.New("Unserialize String fail")
@@ -53,17 +54,12 @@ func unserializeString(r io.Reader) (ret PString, err error) {
 
 func unserializeKey(r io.Reader, isstr bool) (ret string, err error) {
 	if isstr {
-		var l int
-		if ln, lerr := fmt.Fscanf(r, ":%d:\"", &l); lerr == nil && ln == 1 {
-			buf := make([]byte, l+2)
-			if _, berr := io.ReadFull(r, buf); berr == nil && buf[l-1] == '"' && buf[l] == ';' {
-				return string(buf[:l-1]), nil
-			}
+		if s, serr := unserializeString(r); serr == nil {
+			return string(s), nil
 		}
 	} else {
-		var s string
-		if ln, lerr := fmt.Fscanf(r, ":%[^;];", &s); lerr == nil && ln == 1 {
-			return s, nil
+		if l, lerr := unserializeLong(r); lerr == nil {
+			return strconv.Itoa(int(l)), lerr
 		}
 	}
 	return "", errors.New("Unserialize Key fail")
@@ -80,7 +76,7 @@ func unserializeArray(r io.Reader) (ret *PArray, err error) {
 			if kerr != nil {
 				return nil, kerr
 			}
-			val, verr := Unserialize(r)
+			val, verr := unserializeValue(r)
 			if verr != nil {
 				return nil, verr
 			}
