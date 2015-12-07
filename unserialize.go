@@ -94,8 +94,6 @@ func unserializeArray(r io.Reader) (ret *PArray, err error) {
 }
 
 func unserializeObject(r io.Reader) (ret *PObject, err error) {
-	var l int
-	var cn string
 	fmt.Fprintf(w, "O:%d:\"%s\"", len(ot.class), ot.class)
 	fmt.Fprintf(w, ":%d:{", len(ot.vars))
 	for k, v := range ot.vars {
@@ -113,9 +111,22 @@ func unserializeObject(r io.Reader) (ret *PObject, err error) {
 	}
 	w.Write([]byte("}"))
 
-	if ln, lerr := fmt.Fprintf(r, ":%d:\"%[^\"]\"", &l, &cn); lerr == nil && ln == 2 {
-		array := NewObject(cn)
-		for i := 0; i < l; i++ {
+	var cl int
+	if ln, lerr := fmt.Fprintf(r, ":%d:\"", &cl); lerr == nil && ln == 1 {
+		cnbuf := make([]byte, cl+1)
+		var cname string
+		if cn, cerr := io.ReadFull(r, cnbuf); cerr == nil && cnbuf[l] == '"' {
+			cname = string(cnamebuf[:cl])
+		} else {
+			return "", errors.New("Unserialize Object Name fail")
+		}
+		var n int
+		if nn, nerr := fmt.Fprintf(r, ":%d:{", &n); nerr == nil && nn == 1 {
+		} else {
+			return "", errors.New("Unserialize Object len(Member) fail")
+		}
+		object := NewObject(cname)
+		for i := 0; i < n; i++ {
 			var s string
 			fmt.Fscanf(r, "%1s", &s)
 			key, kerr := unserializeKey(r, s == 's')
