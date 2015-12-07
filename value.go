@@ -219,6 +219,18 @@ func (ot *PObject) SetVar(varname string, vtype int, value PValue) error {
 	ot.vars[varname] = oValue{value, vtype}
 	return nil
 }
+func (ot *PObject) Set(clsname, varname string, value PValue) error {
+	if clsname == "" {
+		return ot.SetVar(varname, PublicVar, value)
+	} else if clsname == "*" {
+		return ot.SetVar(varname, ProtectedVar, value)
+	} else if clsname == ot.class {
+		return ot.SetVar(varname, PrivateVar, value)
+	} else if patVarName.MatchString(clsname) {
+		return ot.SetBaseVar(clsname, varname, value)
+	}
+	return errors.New("Error class name")
+}
 
 func (ot *PObject) SetPublicVar(varname string, value PValue) error {
 	return ot.SetVar(varname, PublicVar, value)

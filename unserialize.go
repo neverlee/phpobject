@@ -1,11 +1,13 @@
 package phpobject
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
-func unserializaNil(r io.Reader) (ret PNilType, err error) {
+func unserializaNil(r io.Reader) (ret PValue, err error) {
 	var s string
 	fmt.Fscanf(r, "%1s", &s)
 	if s == ";" {
@@ -41,9 +43,9 @@ func unserializeDouble(r io.Reader) (ret PDouble, err error) {
 func unserializeString(r io.Reader) (ret PString, err error) {
 	var l int
 	if ln, lerr := fmt.Fscanf(r, ":%d:\"", &l); lerr == nil && ln == 1 {
-		buf := make([]byte, l+1)
-		if bn, berr := io.ReadFull(r, buf); berr == nil && buf[l] == '"' {
-			return PString(buf[:l]), nil
+		buf := make([]byte, l+2)
+		if _, berr := io.ReadFull(r, buf); berr == nil && buf[l-1] == '"' && buf[l] == ';' {
+			return PString(buf[:l-1]), nil
 		}
 	}
 	return "", errors.New("Unserialize String fail")
@@ -53,14 +55,14 @@ func unserializeKey(r io.Reader, isstr bool) (ret string, err error) {
 	if isstr {
 		var l int
 		if ln, lerr := fmt.Fscanf(r, ":%d:\"", &l); lerr == nil && ln == 1 {
-			buf := make([]byte, l+1)
-			if bn, berr := io.ReadFull(r, buf); berr == nil && buf[l] == '"' {
-				return PString(buf[:l]), nil
+			buf := make([]byte, l+2)
+			if _, berr := io.ReadFull(r, buf); berr == nil && buf[l-1] == '"' && buf[l] == ';' {
+				return string(buf[:l-1]), nil
 			}
 		}
 	} else {
 		var s string
-		if ln, lerr := fmt.Fscanf(r, ":%[^;];", &l); lerr == nil && ln == 1 {
+		if ln, lerr := fmt.Fscanf(r, ":%[^;];", &s); lerr == nil && ln == 1 {
 			return s, nil
 		}
 	}
@@ -74,7 +76,7 @@ func unserializeArray(r io.Reader) (ret *PArray, err error) {
 		for i := 0; i < l; i++ {
 			var s string
 			fmt.Fscanf(r, "%1s", &s)
-			key, kerr := unserializeKey(r, s == 's')
+			key, kerr := unserializeKey(r, s == "s")
 			if kerr != nil {
 				return nil, kerr
 			}
@@ -90,65 +92,65 @@ func unserializeArray(r io.Reader) (ret *PArray, err error) {
 			return array, nil
 		}
 	}
-	return "", errors.New("Unserialize Array fail")
+	return nil, errors.New("Unserialize Array fail")
+}
+
+func unserializeVarname(r io.Reader) (clsname, varname string, err error) {
+	var s string
+	fmt.Fscanf(r, "%1s", &s)
+	if cname, cerr := unserializeString(r); cerr == nil {
+		slist := strings.Split(string(cname), "\x00")
+		if len(slist) == 2 {
+			return slist[0], slist[1], nil
+		} else if len(slist) == 1 {
+			return "", slist[0], nil
+		} else {
+			return "", "", errors.New("Unserialize Varname fail")
+		}
+	} else {
+		return "", "", errors.New("Unserialize Varname fail")
+	}
 }
 
 func unserializeObject(r io.Reader) (ret *PObject, err error) {
-	fmt.Fprintf(w, "O:%d:\"%s\"", len(ot.class), ot.class)
-	fmt.Fprintf(w, ":%d:{", len(ot.vars))
-	for k, v := range ot.vars {
-		key := PString(k)
-		switch v.varType {
-		case ProtectedVar:
-			key = PString("\x00*\x00" + k)
-		case PrivateVar:
-			key = PString(fmt.Sprintf("\x00%s\x00%s", ot.class, k))
-			//case PublicVar, BasePrivateVar:
-			//	key = k
-		}
-		key.Serialize(w)
-		v.value.Serialize(w)
-	}
-	w.Write([]byte("}"))
-
 	var cl int
-	if ln, lerr := fmt.Fprintf(r, ":%d:\"", &cl); lerr == nil && ln == 1 {
+	if ln, lerr := fmt.Fscanf(r, ":%d:\"", &cl); lerr == nil && ln == 1 {
 		cnbuf := make([]byte, cl+1)
 		var cname string
-		if cn, cerr := io.ReadFull(r, cnbuf); cerr == nil && cnbuf[l] == '"' {
-			cname = string(cnamebuf[:cl])
+		if _, cerr := io.ReadFull(r, cnbuf); cerr == nil && cnbuf[cl] == '"' {
+			cname = string(cnbuf[:cl])
 		} else {
-			return "", errors.New("Unserialize Object Name fail")
+			return nil, errors.New("Unserialize Object Name fail")
 		}
 		var n int
-		if nn, nerr := fmt.Fprintf(r, ":%d:{", &n); nerr == nil && nn == 1 {
+		if nn, nerr := fmt.Fscanf(r, ":%d:{", &n); nerr == nil && nn == 1 {
 		} else {
-			return "", errors.New("Unserialize Object len(Member) fail")
+			return nil, errors.New("Unserialize Object len(Member) fail")
 		}
 		object := NewObject(cname)
 		for i := 0; i < n; i++ {
-			var s string
-			fmt.Fscanf(r, "%1s", &s)
-			key, kerr := unserializeKey(r, s == 's')
-			if kerr != nil {
-				return nil, kerr
-			}
-			val, verr := Unserialize(r)
+			clsname, varname, verr := unserializeVarname(r)
 			if verr != nil {
 				return nil, verr
 			}
-			array.Set(key, val)
+			val, pverr := unserializeValue(r)
+			if pverr != nil {
+				return nil, errors.New("Unserialize Object len(Member) fail")
+			}
+			if object.Set(clsname, varname, val) != nil {
+				return nil, errors.New("Unserialize Object set fail")
+			}
 		}
 		var s string
 		fmt.Fscanf(r, "%1s", &s)
 		if s == "}" {
-			return array, nil
+			return object, nil
 		}
 	}
-	return "", errors.New("Unserialize Array fail")
+	return nil, errors.New("Unserialize Object fail")
 }
 
-func Unserialize(r io.Reader) (ret PValue, err error) {
+func unserializeValue(r io.Reader) (ret PValue, err error) {
 	var s string
 	fmt.Fscanf(r, "%1s", &s)
 	switch s {
@@ -171,48 +173,6 @@ func Unserialize(r io.Reader) (ret PValue, err error) {
 	}
 }
 
-const (
-	PublicVar      = 0
-	ProtectedVar   = 1
-	PrivateVar     = 2
-	BasePrivateVar = 4
-	endVarType     = 5
-)
-
-func (ot *PObject) SetVar(varname string, vtype int, value PValue) error {
-	if vtype == BasePrivateVar {
-		return errors.New("You should use SetBaseVar")
-	}
-	if vtype > BasePrivateVar || vtype < 0 {
-		return errors.New("Error var type")
-	}
-	if !patVarName.MatchString(varname) {
-		return errors.New("Error varname")
-	}
-	ot.vars[varname] = oValue{value, vtype}
-	return nil
-}
-
-func (ot *PObject) SetPublicVar(varname string, value PValue) error {
-	return ot.SetVar(varname, PublicVar, value)
-}
-
-func (ot *PObject) SetProtectedVar(varname string, value PValue) error {
-	return ot.SetVar(varname, ProtectedVar, value)
-}
-
-func (ot *PObject) SetPrivateVar(varname string, value PValue) error {
-	return ot.SetVar(varname, PrivateVar, value)
-}
-
-func (ot *PObject) SetBaseVar(clsname, varname string, value PValue) error {
-	if !patVarName.MatchString(varname) {
-		return errors.New("Error varname")
-	}
-	if !patVarName.MatchString(clsname) {
-		return errors.New("Error class name")
-	}
-	key := fmt.Sprintf("\x00%s\x00%s", clsname, varname)
-	ot.vars[key] = oValue{value, BasePrivateVar}
-	return nil
+func Unserialize(r io.Reader) (ret PValue, err error) {
+	return unserializeValue(r)
 }
